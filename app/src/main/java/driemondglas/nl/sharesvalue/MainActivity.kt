@@ -12,7 +12,10 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
-import com.koushikdutta.ion.Ion
+import com.android.volley.Request
+import com.android.volley.Response
+import com.android.volley.toolbox.StringRequest
+import com.android.volley.toolbox.Volley
 import kotlinx.android.synthetic.main.activity_main.*
 import org.json.JSONObject
 import java.text.NumberFormat
@@ -30,7 +33,6 @@ class MainActivity : AppCompatActivity() {
     private var qtyUSD = 0
     private var qtyHPE = 0
     private var qtyAgilent = 0
-
 
     private var priceHPE = 0f
     private var priceAgilent = 0f
@@ -123,60 +125,65 @@ class MainActivity : AppCompatActivity() {
     private fun probeShares() {
         probeState = 0
 
-        Ion.with(this)
-            .load("https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=HPE&apikey=QM6DLWTO531JNLCC")
-            .asString()
-            .setCallback { ex, result ->
-                Log.d("hvr", "exception:\n$ex\n\nresult:\n$result")
-                if (result.contains("Global Quote", false)) {
-                    priceHPE = (getQuoteItem(result, "price")).toFloat()
-                    probeState++
-                    if (probeState == 3) {
-                        disableButton1Minute()
-                        refreshTable()
-                    }
-                } else if (result.contains("Note", false)) {
-                    Toast.makeText(this, getNote(result), Toast.LENGTH_LONG).show()
-                } else {
-                    Log.d("hvr", "unexpected result: $result\n$ex")
-                }
-            }
+        /* Instantiate the RequestQueue */
+        val queue = Volley.newRequestQueue(this)
+        val urlHpe = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=HPE&apikey=QM6DLWTO531JNLCC"
+        val urlAgilent = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=A&apikey=QM6DLWTO531JNLCC"
+        val urlUsd = "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=EUR&apikey=QM6DLWTO531JNLCC\""
 
-        Ion.with(this)
-            .load("https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=A&apikey=QM6DLWTO531JNLCC")
-            .asString()
-            .setCallback { ex, result ->
-                if (result.contains("Global Quote", false)) {
-                    priceAgilent = (getQuoteItem(result, "price")).toFloat()
-                    probeState++
-                    if (probeState == 3) {
+        /* Request a string response from the HPE URL */
+        val stringRequestHpe = StringRequest(
+            Request.Method.GET, urlHpe,
+            Response.Listener<String> { response ->
+                if (response.contains("Global Quote", false)) {
+                    priceHPE = (getQuoteItem(response, "price")).toFloat()
+                    if (++probeState == 3) {
                         disableButton1Minute()
                         refreshTable()
                     }
-                } else if (result.contains("Note", false)) {
-                    Toast.makeText(this, getNote(result), Toast.LENGTH_LONG).show()
-                } else {
-                    Log.d("hvr","unexpected result: $result\n$ex")
                 }
-            }
+                else if (response.contains("Note", false)) {
+                    Toast.makeText(this, getNote(response), Toast.LENGTH_LONG).show()
+                }
+                else { Log.d("hvr", "unexpected result: $response") }
+            },
+            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: ${error.toString()}") })
 
-        Ion.with(this)
-            .load("https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=EUR&apikey=QM6DLWTO531JNLCC")
-            .asString()
-            .setCallback { ex, result ->
-                if (result.contains("Realtime Currency Exchange Rate", false)) {
-                    rateUSD = getCurrencyItem(result).toFloat()
-                    probeState++
-                    if (probeState == 3) {
+        // Request a string response from the provided URL.
+        val stringRequestAgilent = StringRequest(
+            Request.Method.GET, urlAgilent,
+            Response.Listener<String> { response ->
+                if (response.contains("Global Quote", false)) {
+                    priceAgilent = (getQuoteItem(response, "price")).toFloat()
+                    if (++probeState == 3) {
                         disableButton1Minute()
                         refreshTable()
                     }
-                } else if (result.contains("Note", false)) {
-                    Toast.makeText(this, getNote(result), Toast.LENGTH_LONG).show()
-                } else {
-                    Log.d("hvr", "unexpected result: $result\n$ex")
-                }
-            }
+                } else if (response.contains("Note", false)) {
+                    Toast.makeText(this, getNote(response), Toast.LENGTH_LONG).show()
+                } else { Log.d("hvr", "unexpected result: $response") }
+            },
+            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: ${error.toString()}") })
+
+        val stringRequestUsd = StringRequest(
+            Request.Method.GET, urlUsd,
+            Response.Listener<String> { response ->
+                if (response.contains("Realtime Currency Exchange Rate", false)) {
+                    rateUSD = getCurrencyItem(response).toFloat()
+                    if (++probeState == 3) {
+                        disableButton1Minute()
+                        refreshTable()
+                    }
+                } else if (response.contains("Note", false)) {
+                    Toast.makeText(this, getNote(response), Toast.LENGTH_LONG).show()
+                } else { Log.d("hvr", "unexpected result: $response") }
+            },
+            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: ${error.toString()}") })
+
+        /* Add the requests to the RequestQueue. */
+        queue.add(stringRequestHpe)
+        queue.add(stringRequestAgilent)
+        queue.add(stringRequestUsd)
     }
 
     @Suppress("SameParameterValue")
@@ -235,7 +242,7 @@ class MainActivity : AppCompatActivity() {
             {
                 "Note": "Thank you for using Alpha Vantage! Our standard API call frequency is 5 calls per minute and 500 calls per day. Please visit https://www.alphavantage.co/premium/ if you would like to target a higher API call frequency."
             } */
-        Log.d("hvr","Result $callBackResult")
+        Log.d("hvr", "Result $callBackResult")
         val jsonNote = JSONObject(callBackResult)
         return jsonNote.getString("Note")
     }
@@ -258,60 +265,60 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshTable() {
 
-            /* SHOW SAVED VALUES */
-            txt_saved_date.text = savedDate
-            txt_saved_hpe.text = usdFormat.format(savedHPE)
-            txt_saved_agilent.text = usdFormat.format(savedAgilent)
-            txt_saved_usd.text = numbFormat.format(savedUSD)
+        /* SHOW SAVED VALUES */
+        txt_saved_date.text = savedDate
+        txt_saved_hpe.text = usdFormat.format(savedHPE)
+        txt_saved_agilent.text = usdFormat.format(savedAgilent)
+        txt_saved_usd.text = numbFormat.format(savedUSD)
 
-            /* SHOW DATE */
-            txt_refresh_date.text = sdf.format(Date())
-            txt_refresh_date.setTextColor(Color.BLUE)
+        /* SHOW DATE */
+        txt_refresh_date.text = sdf.format(Date())
+        txt_refresh_date.setTextColor(Color.BLUE)
 
-            /* SHOW HPE LINE*/
-            txt_price_hpe.text = usdFormat.format(priceHPE)
-            txt_price_hpe.setTextColor(Color.BLUE)
+        /* SHOW HPE LINE*/
+        txt_price_hpe.text = usdFormat.format(priceHPE)
+        txt_price_hpe.setTextColor(Color.BLUE)
 
-            /* difference from saved */
-            var diffPct = (priceHPE - savedHPE) / savedHPE
-            txt_pct_hpe.text = pctFormat.format(diffPct)
-            txt_pct_hpe.setTextColor(colorOfValue(diffPct))
+        /* difference from saved */
+        var diffPct = (priceHPE - savedHPE) / savedHPE
+        txt_pct_hpe.text = pctFormat.format(diffPct)
+        txt_pct_hpe.setTextColor(colorOfValue(diffPct))
 
-            val diffEurHPE = qtyHPE * (priceHPE - savedHPE) * rateUSD
-            txt_eur_hpe.text = euroFormat.format(diffEurHPE)
-            txt_eur_hpe.setTextColor(colorOfValue(diffEurHPE))
+        val diffEurHPE = qtyHPE * (priceHPE - savedHPE) * rateUSD
+        txt_eur_hpe.text = euroFormat.format(diffEurHPE)
+        txt_eur_hpe.setTextColor(colorOfValue(diffEurHPE))
 
-            /* SHOW AGILENT LINE */
+        /* SHOW AGILENT LINE */
 
-            txt_price_agilent.text = usdFormat.format(priceAgilent)
-            txt_price_agilent.setTextColor(Color.BLUE)
+        txt_price_agilent.text = usdFormat.format(priceAgilent)
+        txt_price_agilent.setTextColor(Color.BLUE)
 
-            /* difference from saved */
-            diffPct = (priceAgilent - savedAgilent) / savedAgilent
-            txt_pct_agilent.text = pctFormat.format(diffPct)
-            txt_pct_agilent.setTextColor(colorOfValue(diffPct))
+        /* difference from saved */
+        diffPct = (priceAgilent - savedAgilent) / savedAgilent
+        txt_pct_agilent.text = pctFormat.format(diffPct)
+        txt_pct_agilent.setTextColor(colorOfValue(diffPct))
 
-            val diffEurAgilent = qtyAgilent * (priceAgilent - savedAgilent) * rateUSD
-            txt_eur_agilent.text = euroFormat.format(diffEurAgilent)
-            txt_eur_agilent.setTextColor(colorOfValue(diffEurAgilent))
+        val diffEurAgilent = qtyAgilent * (priceAgilent - savedAgilent) * rateUSD
+        txt_eur_agilent.text = euroFormat.format(diffEurAgilent)
+        txt_eur_agilent.setTextColor(colorOfValue(diffEurAgilent))
 
-            /* SHOW USD LINE */
-            txt_rate_usd.text = numbFormat.format(rateUSD)
-            txt_rate_usd.setTextColor(Color.BLUE)
+        /* SHOW USD LINE */
+        txt_rate_usd.text = numbFormat.format(rateUSD)
+        txt_rate_usd.setTextColor(Color.BLUE)
 
-            /* difference from saved */
-            diffPct = (rateUSD - savedUSD) / savedUSD
-            txt_pct_usd.text = pctFormat.format(diffPct)
-            txt_pct_usd.setTextColor(colorOfValue(diffPct))
+        /* difference from saved */
+        diffPct = (rateUSD - savedUSD) / savedUSD
+        txt_pct_usd.text = pctFormat.format(diffPct)
+        txt_pct_usd.setTextColor(colorOfValue(diffPct))
 
-            val diffEurUSD = qtyUSD * (rateUSD - savedUSD) * rateUSD
-            txt_eur_usd.text = euroFormat.format(diffEurUSD)
-            txt_eur_usd.setTextColor(colorOfValue(diffEurUSD))
+        val diffEurUSD = qtyUSD * (rateUSD - savedUSD) * rateUSD
+        txt_eur_usd.text = euroFormat.format(diffEurUSD)
+        txt_eur_usd.setTextColor(colorOfValue(diffEurUSD))
 
-            /* SHOW TOTALS LINE */
-            sum_all_eur.text = euroFormat.format((qtyUSD + qtyHPE * priceHPE + qtyAgilent * priceAgilent) * rateUSD)
-            sum_div_eur.text = euroFormat.format(diffEurHPE + diffEurAgilent + diffEurUSD)
-            sum_div_eur.setTextColor(colorOfValue(diffEurHPE + diffEurAgilent + diffEurUSD))
+        /* SHOW TOTALS LINE */
+        sum_all_eur.text = euroFormat.format((qtyUSD + qtyHPE * priceHPE + qtyAgilent * priceAgilent) * rateUSD)
+        sum_div_eur.text = euroFormat.format(diffEurHPE + diffEurAgilent + diffEurUSD)
+        sum_div_eur.setTextColor(colorOfValue(diffEurHPE + diffEurAgilent + diffEurUSD))
     }
 
     private fun colorOfValue(waarde: Float): Int {
