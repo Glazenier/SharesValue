@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Shares Value</string>
+    <string name="lbl_save">Save</string>
+    <string name="lbl_refresh">Refresh</string>
+    <string name="lbl_hekjes">####</string>
+    <string name="lbl_usd">USD</string>
+    <string name="lbl_agilent">Agilent</string>
+    <string name="lbl_hpe">HPE</string>
+    <string name="lbl_datetime">Date\n  time</string>
+    <string name="lbl_diff_eur">+/- EUR</string>
+    <string name="lbl_pct">%</string>
+    <string name="lbl_saved">Saved</string>
+    <string name="lbl_now">Now</string>
+    <string name="menu_caption_show_qty">Show/Edit Quantities</string>
+</resources>
