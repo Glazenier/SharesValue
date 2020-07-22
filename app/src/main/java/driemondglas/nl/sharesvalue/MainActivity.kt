@@ -47,15 +47,25 @@ class MainActivity : AppCompatActivity() {
     private val euroFormat = NumberFormat.getCurrencyInstance(Locale("nl", "NL"))
     private val numbFormat = NumberFormat.getNumberInstance(Locale("en", "US"))
     private val pctFormat = NumberFormat.getPercentInstance(Locale("en", "US"))
-    private var sdf: SimpleDateFormat = SimpleDateFormat("dd-MM-`yy HH:mm")
+    private var sdf: SimpleDateFormat = SimpleDateFormat("dd-MM-`yy HH:mm", Locale.getDefault())
 
-    private var probeState = 0
+    private var responseCount = 0
+
+    /* url for needed stock prices and currency rate */
+    private val URL_HPE = "https://cloud.iexapis.com/stable/stock/hpe/book?token=" + API_TOKEN
+    private val URL_AGILENT = "https://cloud.iexapis.com/stable/stock/a/book?token=" + API_TOKEN
+
+    /*  IEX-cloud paid subscription
+        private val URL_USD = "https://cloud.iexapis.com/stable/fx/latest?symbols=USDEUR&token=" + API_TOKEN
+    */
+    private val URL_USD = "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=EUR&apikey=" + API_KEY
+    private val PREF_KEY = "SharesPrefKey"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        myPreferences = applicationContext.getSharedPreferences("SharesPrefKey", Context.MODE_PRIVATE)
+        myPreferences = applicationContext.getSharedPreferences(PREF_KEY, Context.MODE_PRIVATE)
 
         btn_save.setOnClickListener { saveLast() }
 
@@ -70,6 +80,7 @@ class MainActivity : AppCompatActivity() {
             probeShares()
         }
 
+        /* refresh button remains disabled until timer expires */
         btn_refresh.enabled(false)
 
         numbFormat.minimumFractionDigits = 4
@@ -123,62 +134,67 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun probeShares() {
-        probeState = 0
+        /* keep track of the number of responses received */
+        responseCount = 0
 
-        /* Instantiate the RequestQueue */
+        /* initialise the Volley Request Queue */
         val queue = Volley.newRequestQueue(this)
-        val urlHpe = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=HPE&apikey=QM6DLWTO531JNLCC"
-        val urlAgilent = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=A&apikey=QM6DLWTO531JNLCC"
-        val urlUsd = "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=EUR&apikey=QM6DLWTO531JNLCC\""
 
         /* Request a string response from the HPE URL */
         val stringRequestHpe = StringRequest(
-            Request.Method.GET, urlHpe,
-            Response.Listener<String> { response ->
-                if (response.contains("Global Quote", false)) {
+            Request.Method.GET, URL_HPE,
+            Response.Listener { response ->
+                if (response.contains("quote")) {
                     priceHPE = (getQuoteItem(response, "price")).toFloat()
-                    if (++probeState == 3) {
+                    if (++responseCount == 3) {
                         disableButton1Minute()
                         refreshTable()
                     }
-                }
-                else if (response.contains("Note", false)) {
+                } else if (response.contains("Note")) {
                     Toast.makeText(this, getNote(response), Toast.LENGTH_LONG).show()
+                    disableButton1Minute()
+                } else {
+                    Log.d("hvr", "Unexpected result: $response")
                 }
-                else { Log.d("hvr", "unexpected result: $response") }
+                Log.d("hvr", "Response: $response")
             },
-            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: ${error.toString()}") })
+            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: $error") })
 
-        // Request a string response from the provided URL.
+        // Request a string response from the 'Agilent' URL.
         val stringRequestAgilent = StringRequest(
-            Request.Method.GET, urlAgilent,
-            Response.Listener<String> { response ->
-                if (response.contains("Global Quote", false)) {
+            Request.Method.GET, URL_AGILENT,
+            Response.Listener { response ->
+                if (response.contains("quote")) {
                     priceAgilent = (getQuoteItem(response, "price")).toFloat()
-                    if (++probeState == 3) {
+                    if (++responseCount == 3) {
                         disableButton1Minute()
                         refreshTable()
                     }
-                } else if (response.contains("Note", false)) {
+                } else if (response.contains("Note")) {
                     Toast.makeText(this, getNote(response), Toast.LENGTH_LONG).show()
-                } else { Log.d("hvr", "unexpected result: $response") }
+                } else {
+                    Log.d("hvr", "Unexpected result: $response")
+                }
+                Log.d("hvr", "Response: $response")
             },
-            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: ${error.toString()}") })
+            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: $error") })
 
         val stringRequestUsd = StringRequest(
-            Request.Method.GET, urlUsd,
-            Response.Listener<String> { response ->
-                if (response.contains("Realtime Currency Exchange Rate", false)) {
+            Request.Method.GET, URL_USD,
+            Response.Listener { response ->
+                if (response.contains("Realtime Currency Exchange Rate")) {
                     rateUSD = getCurrencyItem(response).toFloat()
-                    if (++probeState == 3) {
+                    if (++responseCount == 3) {
                         disableButton1Minute()
                         refreshTable()
                     }
-                } else if (response.contains("Note", false)) {
+                } else if (response.contains("Note")) {
                     Toast.makeText(this, getNote(response), Toast.LENGTH_LONG).show()
-                } else { Log.d("hvr", "unexpected result: $response") }
+                } else {
+                    Log.d("hvr", "Unexpected result: $response")
+                }
             },
-            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: ${error.toString()}") })
+            Response.ErrorListener { error -> Log.d("hvr", "That didn't work: $error") })
 
         /* Add the requests to the RequestQueue. */
         queue.add(stringRequestHpe)
@@ -187,80 +203,87 @@ class MainActivity : AppCompatActivity() {
     }
 
     @Suppress("SameParameterValue")
-    private fun getQuoteItem(result: String, item: String): String {
-        /*
-            json result output looks like
-            {
-                "Global Quote": {
-                    "01. symbol": "MSFT",
-                    "02. open": "119.5000",
-                    "03. high": "119.5890",
-                    "04. low": "117.0400",
-                    "05. price": "117.0500",
-                    "06. volume": "33624528",
-                    "07. latest trading day": "2019-03-22",
-                    "08. previous close": "120.2200",
-                    "09. change": "-3.1700",
-                    "10. change percent": "-2.6368%"
-                }
+    private fun getQuoteItem(response: String, item: String): String {
+        /* json result expected:
+        {
+            "Global Quote": {
+                "01. symbol": "MSFT",
+                "02. open": "119.5000",
+                "03. high": "119.5890",
+                "04. low": "117.0400",
+                "05. price": "117.0500",
+                "06. volume": "33624528",
+                "07. latest trading day": "2019-03-22",
+                "08. previous close": "120.2200",
+                "09. change": "-3.1700",
+                "10. change percent": "-2.6368%"
             }
+        }
         */
 
-        val json = JSONObject(result)  //entire result
-        val jsonQuote = json.getJSONObject("Global Quote")
+        val json = JSONObject(response)  //entire response
+        val jsonQuote = json.getJSONObject("quote")
 
         return when (item) {
             "symbol" -> jsonQuote.getString("01. symbol")
-            "price" -> jsonQuote.getString("05. price")
+            "price" -> jsonQuote.getString("latestPrice")
             "previous" -> jsonQuote.getString("08. previous close")
             "change" -> jsonQuote.getString("10. change percent")
             else -> "Item $item Not Found"
         }
     }
 
-    private fun getCurrencyItem(callBackResult: String): String {
+    private fun getCurrencyItem(response: String): String {
         /*
-            {
-                "Realtime Currency Exchange Rate": {
-                "1. From_Currency Code": "EUR",
-                "2. From_Currency Name": "Euro",
-                "3. To_Currency Code": "USD",
-                "4. To_Currency Name": "United States Dollar",
-                "5. Exchange Rate": "1.13058220",
-                "6. Last Refreshed": "2019-03-23 20:56:37",
-                "7. Time Zone": "UTC"
-            }
+        {
+            "Realtime Currency Exchange Rate": {
+            "1. From_Currency Code": "EUR",
+            "2. From_Currency Name": "Euro",
+            "3. To_Currency Code": "USD",
+            "4. To_Currency Name": "United States Dollar",
+            "5. Exchange Rate": "1.13058220",
+            "6. Last Refreshed": "2019-03-23 20:56:37",
+            "7. Time Zone": "UTC"
+        }
         */
 
-        val json = JSONObject(callBackResult)       //entire result
+        /*  IEX-cloud paid subscription
+            [{"symbol":"EURUSD","rate":1.19017,"timestamp":1648376930328,"isDerived":false}]
+        */
+
+//        val json = JSONArray(response)  //entire response
+//        val jsonQuote = json[0] as JSONObject
+//        val fxrate =jsonQuote.getString("rate")
+//        Log.d("hvr", fxrate)
+//        return fxrate
+
+        val json = JSONObject(response)       //entire result
         val jsonCurrency = json.getJSONObject("Realtime Currency Exchange Rate")
         return jsonCurrency.getString("5. Exchange Rate")
     }
 
-    private fun getNote(callBackResult: String): String {
+    private fun getNote(response: String): String {
         /* json result output looks something like:
             {
                 "Note": "Thank you for using Alpha Vantage! Our standard API call frequency is 5 calls per minute and 500 calls per day. Please visit https://www.alphavantage.co/premium/ if you would like to target a higher API call frequency."
             } */
-        Log.d("hvr", "Result $callBackResult")
-        val jsonNote = JSONObject(callBackResult)
+        Log.d("hvr", "Result $response")
+        val jsonNote = JSONObject(response)
         return jsonNote.getString("Note")
     }
 
     private fun disableButton1Minute() {
-        runOnUiThread {
-            /* disable the refresh function for 1 minute to comply with alpha vantage per minute maximum */
-            btn_refresh.enabled(false)
-            view_timer.visibility = View.VISIBLE
-            Timer().schedule(60000) {
-                view_timer.stop()
-                view_timer.visibility = View.INVISIBLE
-                btn_refresh.enabled(true)
-            }
-            view_timer.isCountDown = true
-            view_timer.base = SystemClock.elapsedRealtime() + 59000
-            view_timer.start()
+        /* disable the refresh function during one minute to comply with Alpha Vantage data provider per minute maximum */
+        btn_refresh.enabled(false)
+        /* show 60 second countdown timer */
+        view_timer.visibility = View.VISIBLE
+        Timer().schedule(1000) {   //59000
+            view_timer.stop()
+            view_timer.visibility = View.INVISIBLE
+            btn_refresh.enabled(true)
         }
+        view_timer.base = SystemClock.elapsedRealtime() + 1000  //59000
+        view_timer.start()
     }
 
     private fun refreshTable() {
@@ -293,7 +316,7 @@ class MainActivity : AppCompatActivity() {
         txt_price_agilent.text = usdFormat.format(priceAgilent)
         txt_price_agilent.setTextColor(Color.BLUE)
 
-        /* difference from saved */
+        /* difference from saved value*/
         diffPct = (priceAgilent - savedAgilent) / savedAgilent
         txt_pct_agilent.text = pctFormat.format(diffPct)
         txt_pct_agilent.setTextColor(colorOfValue(diffPct))

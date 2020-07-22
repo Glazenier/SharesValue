@@ -5,9 +5,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/edit_background"
-        android:backgroundTint="@android:color/holo_orange_light"
+        android:backgroundTint="#FFE082"
         >
-
 
     <TextView
             android:id="@+id/txt_eur_usd"
@@ -329,8 +328,9 @@
             android:id="@+id/view_timer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="18sp"
+            android:countDown="true"
+            android:textColor="#606060"
+            android:textSize="24sp"
             app:layout_constraintBottom_toTopOf="@+id/btn_refresh"
             app:layout_constraintEnd_toEndOf="@+id/btn_refresh"
             app:layout_constraintStart_toStartOf="@+id/btn_refresh"
